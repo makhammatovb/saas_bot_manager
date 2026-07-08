@@ -61,7 +61,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['username', 'first_name', 'last_name', 'company', 'password', 'role']
+        fields = ['username', 'first_name', 'last_name', 'company', 'password', 'role', 'telegram_id']
 
     def create(self, validated_data):
         user = CustomUser.objects.create_user(
@@ -70,7 +70,8 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             last_name=validated_data.get('last_name', ''),
             company=validated_data.get('company', None),
             password=validated_data['password'],
-            role=validated_data.get('role', 'company_manager')
+            role=validated_data.get('role', 'company_manager'),
+            telegram_id=validated_data.get('telegram_id', None)
         )
         return user
 
@@ -100,14 +101,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'first_name', 'last_name', 'company', 'role', 'is_active']
+        fields = ['id', 'username', 'first_name', 'last_name', 'company', 'role', 'is_active', 'telegram_id']
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = CustomUser
-        fields = ['first_name', 'last_name', 'company', 'role', 'is_active']
+        fields = ['first_name', 'last_name', 'company', 'role', 'is_active', 'telegram_id']
 
 
 class PasswordChangeSerializer(serializers.Serializer):
