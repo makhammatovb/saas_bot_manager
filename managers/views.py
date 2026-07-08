@@ -1,6 +1,7 @@
-from rest_framework import viewsets, generics, views
+from rest_framework import viewsets, generics, views, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from rest_framework.decorators import action
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -25,23 +26,22 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [IsSuperAdmin]
 
 
-class LoginView(views.APIView):
-    permission_classes = [AllowAny]
-
+class UserLoginView(views.APIView):
     def post(self, request):
         serializer = UserLoginSerializer(data=request.data)
         if serializer.is_valid():
-            user = authenticate(username=serializer.valid_data['username'], 
-                              password=serializer.valid_data['password'])
-            if user and user.is_active:
-                refresh = RefreshToken.for_user(user)
-                return Response({
-                    'refresh': str(refresh),
-                    'access': str(refresh.access_token),
-                    'user': UserProfileSerializer(user).data
-                })
-            return Response({"error": "Invalid credentials"}, status=400)
-        return Response(serializer.errors, status=400)
+            user = serializer.validated_data['user']
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'success': True,
+                'user': UserProfileSerializer(user).data,
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }, status=status.HTTP_200_OK)
+        return Response({
+            'success': False,
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ProfileView(generics.RetrieveUpdateAPIView):
@@ -135,6 +135,53 @@ class TelegramGroupViewSet(viewsets.ModelViewSet):
         if self.request.method in ['POST', 'PUT', 'PATCH']:
             return TelegramGroupWriteSerializer
         return TelegramGroupViewSerializer
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        company = user.company if hasattr(user, 'company') and user.company else None
+        serializer.save(
+            company=company
+        )
+    
+    @action(detail=True, methods=['post'], url_path='push')
+    def push(self, request, pk=None):
+        group = self.get_object()
+        try:
+            count = enqueue_push(
+                company=group.company,
+                group_telegram_id=group.telegram_id,
+                requested_by=request.user.id
+            )
+            return Response({
+                "status": "success",
+                "message": f"Successfully queued {count} users to be added to group '{group.title}'.",
+                "queued_count": count
+            })
+        except Exception as e:
+            return Response({
+                "status": "error",
+                "message": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], url_path='wipe')
+    def wipe(self, request, pk=None):
+        group = self.get_object()
+        try:
+            count = enqueue_wipe(
+                company=group.company,
+                group_telegram_id=group.telegram_id,
+                requested_by=request.user.id
+            )
+            return Response({
+                "status": "success",
+                "message": f"Successfully queued {count} users to be removed from group '{group.title}'.",
+                "queued_count": count
+            })
+        except Exception as e:
+            return Response({
+                "status": "error",
+                "message": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class JobViewSet(viewsets.ModelViewSet):

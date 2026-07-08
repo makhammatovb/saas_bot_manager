@@ -14,7 +14,7 @@ class Company(models.Model):
     notes = models.TextField(blank=True)
 
     def __str__(self):
-        return self.name
+        return self.namea
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -38,6 +38,7 @@ class CustomUser(AbstractUser):
         choices=[('super_admin', 'Super Admin'), ('company_manager', 'Company Manager')],
         default='company_manager'
     )
+    telegram_id = models.BigIntegerField(null=True, blank=True, unique=True)
 
     def __str__(self):
         return f"{self.username} ({self.role})"
@@ -49,11 +50,11 @@ class CustomUser(AbstractUser):
 
 
 class TelegramUser(models.Model):
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='telegram_users')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='telegram_users', null=True, blank=True)
     telegram_id = models.BigIntegerField(null=True, blank=True)
     username = models.CharField(max_length=100, null=True, blank=True)
     full_name = models.CharField(max_length=255, blank=True)
-    added_by = models.BigIntegerField()
+    added_by = models.BigIntegerField(null=True, blank=True)
     added_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -62,7 +63,7 @@ class TelegramUser(models.Model):
 
 
 class TelegramGroup(models.Model):
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='groups')
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='groups', null=True, blank=True)
     telegram_id = models.BigIntegerField()
     title = models.CharField(max_length=255, blank=True)
     added_at = models.DateTimeField(default=timezone.now)

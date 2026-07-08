@@ -19,7 +19,6 @@ from django.urls import path, include
 
 urlpatterns = [
     path('api/telegram-manager/admin/', admin.site.urls),
-    path('api/telegram-manager/core/', include('core.urls')),
     path('api/telegram-manager/companies/', include('companies.urls')),
     path('api/telegram-manager/managers/', include('managers.urls')),
 ]

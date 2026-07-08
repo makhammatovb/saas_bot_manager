@@ -4,6 +4,6 @@ from .views import CompanyViewSet
 
 router = DefaultRouter()
 
-router.register(r'companies', CompanyViewSet, basename='companies')
+router.register(r'companies', CompanyViewSet, basename='companies') # checked
 
 urlpatterns = router.urls
