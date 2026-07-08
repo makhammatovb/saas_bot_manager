@@ -10,8 +10,13 @@ class Company(models.Model):
     api_hash = models.CharField(max_length=255)
     session_name = models.CharField(max_length=255, unique=True)
     is_active = models.BooleanField(default=True)
+    daily_add_limit = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     notes = models.TextField(blank=True)
+
+    def get_daily_limit(self):
+        from django.conf import settings
+        return self.daily_add_limit or settings.DAILY_ADD_LIMIT
 
     def __str__(self):
         return self.namea
@@ -86,7 +91,7 @@ class Job(models.Model):
     group_telegram_id = models.BigIntegerField()
     status = models.CharField(max_length=20, default='pending', choices=STATUS_CHOICES)
     attempts = models.IntegerField(default=0)
-    error = models.TextField(blank=True)
+    error = models.TextField(null=True, blank=True)
     retry_after = models.DateTimeField(null=True, blank=True)
     requested_by = models.BigIntegerField()
     created_at = models.DateTimeField(auto_now_add=True)

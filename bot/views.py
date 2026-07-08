@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
-from .models import Job
+from core.models import Job
 
 class StatusView(APIView):
     permission_classes = [IsAuthenticated]
