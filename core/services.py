@@ -1,4 +1,4 @@
-from .models import Job, TelegramUser
+from .models import Job, TelegramGroup, TelegramUser
 
 def enqueue_push(company, group_telegram_id: int, requested_by: int):
     users = TelegramUser.objects.filter(company=company)
@@ -32,3 +32,14 @@ def enqueue_wipe(company, group_telegram_id: int, requested_by: int):
         )
         count += 1
     return count
+
+
+def register_group(company, telegram_id, title):
+    group, created = TelegramGroup.objects.get_or_create(
+        telegram_id=telegram_id,
+        defaults={
+            "title": title,
+            "company": company,
+        },
+    )
+    return group, created
