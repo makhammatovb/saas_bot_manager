@@ -147,11 +147,18 @@ class TelegramGroupViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='push')
     def push(self, request, pk=None):
         group = self.get_object()
+        user_ids = request.data.get('user_ids', [])
+        if not isinstance(user_ids, list):
+            return Response({
+                "status": "error",
+                "message": "user_ids must be a list of ids (or an empty list / omitted for all users)."
+            }, status=status.HTTP_400_BAD_REQUEST)
         try:
             count = enqueue_push(
                 company=group.company,
                 group_telegram_id=group.telegram_id,
-                requested_by=request.user.id
+                requested_by=request.user.id,
+                user_ids=user_ids
             )
             return Response({
                 "status": "success",
@@ -167,11 +174,18 @@ class TelegramGroupViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='wipe')
     def wipe(self, request, pk=None):
         group = self.get_object()
+        user_ids = request.data.get('user_ids', [])
+        if not isinstance(user_ids, list):
+            return Response({
+                "status": "error",
+                "message": "user_ids must be a list of ids (or an empty list / omitted for all users)."
+            }, status=status.HTTP_400_BAD_REQUEST)
         try:
             count = enqueue_wipe(
                 company=group.company,
                 group_telegram_id=group.telegram_id,
-                requested_by=request.user.id
+                requested_by=request.user.id,
+                user_ids=user_ids
             )
             return Response({
                 "status": "success",

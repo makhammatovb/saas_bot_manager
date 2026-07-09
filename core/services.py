@@ -1,7 +1,13 @@
 from .models import Job, TelegramGroup, TelegramUser
 
-def enqueue_push(company, group_telegram_id: int, requested_by: int):
+def _get_target_users(company, user_ids=None):
     users = TelegramUser.objects.filter(company=company)
+    if user_ids:
+        users = users.filter(id__in=user_ids)
+    return users
+
+def enqueue_push(company, group_telegram_id: int, requested_by: int, user_ids=None):
+    users = _get_target_users(company, user_ids)
     count = 0
     for user in users:
         ref = f"@{user.username}" if user.username else str(user.telegram_id)
@@ -17,8 +23,8 @@ def enqueue_push(company, group_telegram_id: int, requested_by: int):
     return count
 
 
-def enqueue_wipe(company, group_telegram_id: int, requested_by: int):
-    users = TelegramUser.objects.filter(company=company)
+def enqueue_wipe(company, group_telegram_id: int, requested_by: int, user_ids=None):
+    users = _get_target_users(company, user_ids)
     count = 0
     for user in users:
         ref = f"@{user.username}" if user.username else str(user.telegram_id)
