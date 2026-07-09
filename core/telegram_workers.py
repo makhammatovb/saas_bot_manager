@@ -1,19 +1,14 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone as dt_timezone
+
 from asgiref.sync import sync_to_async
 from django.utils import timezone
 from django.conf import settings
+
 from aiogram import Bot as AiogramBot
-from telethon import TelegramClient, events
-from telethon.tl.types import (
-    UpdateChannelParticipant,
-    UpdateChatParticipant,
-    ChannelParticipantAdmin,
-    ChannelParticipantCreator,
-    ChatParticipantAdmin,
-    ChatParticipantCreator,
-)
+
+from telethon import TelegramClient
 from telethon.errors import (
     FloodWaitError,
     PeerFloodError,
@@ -27,14 +22,18 @@ from telethon.errors import (
 )
 from telethon.tl.functions.channels import InviteToChannelRequest
 from telethon.tl.functions.messages import AddChatUserRequest
+
 from core.models import Company, Job, CustomUser
 from core.services import register_group
+
 logger = logging.getLogger(__name__)
 
 DELAY_SECONDS = 40
 POLL_INTERVAL_SECONDS = 3
+GROUP_SCAN_INTERVAL_SECONDS = 60
 
 notify_bot = AiogramBot(token=settings.BOT_TOKEN)
+
 
 def _get_next_pending_job_sync(company):
     return (
@@ -59,18 +58,17 @@ def _get_today_add_count_sync(company):
     ).count()
 
 
-def _get_manager_telegram_id_sync(actor_id):
-    try:
-        user = CustomUser.objects.get(telegram_id=actor_id)
-        return user.telegram_id
-    except CustomUser.DoesNotExist:
-        return None
+def _get_company_manager_ids_sync(company):
+    return list(
+        CustomUser.objects.filter(company=company, telegram_id__isnull=False)
+        .values_list("telegram_id", flat=True)
+    )
 
 
 get_next_pending_job = sync_to_async(_get_next_pending_job_sync)
 mark_job = sync_to_async(_mark_job_sync)
 get_today_add_count = sync_to_async(_get_today_add_count_sync)
-get_manager_telegram_id = sync_to_async(_get_manager_telegram_id_sync)
+get_company_manager_ids = sync_to_async(_get_company_manager_ids_sync)
 register_group_async = sync_to_async(register_group)
 
 
@@ -165,89 +163,82 @@ async def process_one(client, company, job):
     )
 
 
-def _to_bot_style_group_id(*, channel_id: int | None, chat_id: int | None) -> int:
-    if channel_id is not None:
-        return int(f"-100{channel_id}")
-    return -chat_id
-
-
-def register_group_handlers(client: TelegramClient, company: Company):
-    me_id_holder = {}
-
-    @client.on(events.Raw(types=[UpdateChannelParticipant, UpdateChatParticipant]))
-    async def _on_participant_update(update):
-        if "id" not in me_id_holder:
-            me = await client.get_me()
-            me_id_holder["id"] = me.id
-        my_id = me_id_holder["id"]
-        if isinstance(update, UpdateChannelParticipant):
-            if update.user_id != my_id:
-                return
-            new = update.new_participant
-            if not isinstance(new, (ChannelParticipantAdmin, ChannelParticipantCreator)):
-                return
-            group_telegram_id = _to_bot_style_group_id(channel_id=update.channel_id, chat_id=None)
-        else:
-            if update.user_id != my_id:
-                return
-            new = update.new_participant
-            if not isinstance(new, (ChatParticipantAdmin, ChatParticipantCreator)):
-                return
-            group_telegram_id = _to_bot_style_group_id(channel_id=None, chat_id=update.chat_id)
-
+async def notify_company_managers(company, title):
+    manager_ids = await get_company_manager_ids(company)
+    for tg_id in manager_ids:
         try:
-            entity = await client.get_entity(group_telegram_id)
-            title = getattr(entity, "title", "Unknown group")
+            await notify_bot.send_message(
+                tg_id,
+                f"✅ Group <b>{title}</b> has been auto-registered under company: <b>{company.name}</b>",
+                parse_mode="HTML",
+            )
         except Exception:
-            title = "Unknown group"
+            logger.exception("Failed to notify manager %s for company %s", tg_id, company.name)
 
-        group, created = await register_group_async(
-            company=company,
-            telegram_id=group_telegram_id,
-            title=title,
-        )
 
-        logger.info(
-            "[%s] Userbot promoted to admin in '%s' (%s) — %s",
-            company.name, title, group_telegram_id,
-            "registered" if created else "already registered",
-        )
+async def scan_for_admin_groups(client: TelegramClient, company: Company):
+    while True:
+        try:
+            async for dialog in client.iter_dialogs():
+                if not (dialog.is_group or dialog.is_channel):
+                    continue
 
-        actor_id = getattr(update, "actor_id", None)
-        if actor_id:
-            manager_telegram_id = await get_manager_telegram_id(actor_id)
-            if manager_telegram_id:
                 try:
-                    if created:
-                        text = (
-                            f"✅ Group <b>{title}</b> has been auto-registered "
-                            f"under company: <b>{company.name}</b>"
-                        )
-                    else:
-                        text = f"Group <b>{title}</b> was already registered."
-                    await notify_bot.send_message(manager_telegram_id, text, parse_mode="HTML")
+                    perms = await client.get_permissions(dialog.entity, "me")
                 except Exception:
-                    logger.exception("Failed to notify manager %s", manager_telegram_id)
+                    continue
 
+                if not (perms.is_admin or perms.is_creator):
+                    continue
+
+                raw_id = dialog.entity.id
+                group_telegram_id = int(f"-100{raw_id}") if dialog.is_channel else -raw_id
+
+                group, created = await register_group_async(
+                    company=company,
+                    telegram_id=group_telegram_id,
+                    title=dialog.title,
+                )
+
+                if created:
+                    logger.info(
+                        "[%s] Detected new admin group '%s' (%s) — registered",
+                        company.name, dialog.title, group_telegram_id,
+                    )
+                    await notify_company_managers(company, dialog.title)
+
+        except Exception:
+            logger.exception("Group scan error for company %s — continuing", company.name)
+
+        await asyncio.sleep(GROUP_SCAN_INTERVAL_SECONDS)
+
+
+# ---------- per-company worker: runs job loop + group scan concurrently ----------
 
 async def company_worker_loop(company):
     client = TelegramClient(company.session_name, company.api_id, company.api_hash)
     await client.start()
     logger.info("Userbot connected for company: %s", company.name)
-    register_group_handlers(client, company)
-    while True:
-        try:
-            job = await get_next_pending_job(company)
-            if job is None:
+
+    async def job_loop():
+        while True:
+            try:
+                job = await get_next_pending_job(company)
+                if job is None:
+                    await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                    continue
+
+                await process_one(client, company, job)
+                await asyncio.sleep(DELAY_SECONDS)
+
+            except Exception:
+                logger.exception("Worker loop error for company %s — continuing", company.name)
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
-                continue
 
-            await process_one(client, company, job)
-            await asyncio.sleep(DELAY_SECONDS)
-
-        except Exception:
-            logger.exception("Worker loop error for company %s — continuing", company.name)
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+    await asyncio.gather(
+        job_loop(),
+        scan_for_admin_groups(client, company),
+    )
 
 
 async def run_all():
