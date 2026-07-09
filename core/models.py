@@ -5,10 +5,10 @@ from django.utils import timezone
 
 class Company(models.Model):
     name = models.CharField(max_length=255, unique=True)
-    slug = models.SlugField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, null=True, blank=True, unique=True)
     api_id = models.IntegerField()
     api_hash = models.CharField(max_length=255)
-    session_name = models.CharField(max_length=255, unique=True)
+    session_name = models.CharField(max_length=255, null=True, blank=True, unique=True)
     is_active = models.BooleanField(default=True)
     daily_add_limit = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -19,15 +19,25 @@ class Company(models.Model):
         return self.daily_add_limit or settings.DAILY_ADD_LIMIT
 
     def __str__(self):
-        return self.namea
+        return self.name
 
     def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = self.name.lower().replace(" ", "-")
+        is_new = self._state.adding
         super().save(*args, **kwargs)
+        if is_new:
+            update_fields = []
+            if not self.slug:
+                self.slug = f"{self.name.lower().replace(' ', '-')}-{self.id}"
+                update_fields.append("slug")
+            if not self.session_name:
+                self.session_name = f"company_{self.id}_session"
+                update_fields.append("session_name")
+            if update_fields:
+                super().save(update_fields=update_fields)
 
     class Meta:
         verbose_name_plural = "Companies"
+        db_table = "companies"
 
 
 class CustomUser(AbstractUser):
@@ -65,6 +75,7 @@ class TelegramUser(models.Model):
     class Meta:
         unique_together = (('company', 'telegram_id'), ('company', 'username'))
         verbose_name_plural = "Telegram Users"
+        db_table = "telegram_users"
 
 
 class TelegramGroup(models.Model):
@@ -76,6 +87,7 @@ class TelegramGroup(models.Model):
     class Meta:
         unique_together = ('company', 'telegram_id')
         verbose_name_plural = "Telegram Groups"
+        db_table = "telegram_groups"
 
 
 class Job(models.Model):
@@ -99,3 +111,4 @@ class Job(models.Model):
 
     class Meta:
         verbose_name_plural = "Jobs"
+        db_table = "jobs"
