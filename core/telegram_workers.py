@@ -213,8 +213,6 @@ async def scan_for_admin_groups(client: TelegramClient, company: Company):
         await asyncio.sleep(GROUP_SCAN_INTERVAL_SECONDS)
 
 
-# ---------- per-company worker: runs job loop + group scan concurrently ----------
-
 async def company_worker_loop(company):
     client = TelegramClient(company.session_name, company.api_id, company.api_hash)
     await client.start()
