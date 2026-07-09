@@ -31,8 +31,9 @@ from core.models import Company, Job, CustomUser
 from core.services import register_group
 logger = logging.getLogger(__name__)
 
-DELAY_SECONDS = 5
+DELAY_SECONDS = 40
 POLL_INTERVAL_SECONDS = 3
+
 notify_bot = AiogramBot(token=settings.BOT_TOKEN)
 
 def _get_next_pending_job_sync(company):
